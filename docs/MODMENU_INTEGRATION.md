@@ -4,7 +4,7 @@ For: anyone (human or Claude session) working on a LethalFantasy BepInEx mod –
 `LethalFantasy-HandleWithCare`, `LethalFantasy-TTS`, `LethalFantasy-SimHub-Haptics` or a new one –
 who wants its settings to show up nicely in the shared **MODS** settings tab.
 
-Source: `d:\dev\LethalFantasy-Comparator\src\LFModMenu` (`LFModMenu.dll`, GUID `com.epicopy.lfmodmenu`).
+Source: `src/LFModMenu` (`LFModMenu.dll`, GUID `com.epicopy.lfmodmenu`).
 Installed at `BepInEx\plugins\LFModMenu\LFModMenu.dll`. Tested against game beta 1.0.3.
 
 ## TL;DR
