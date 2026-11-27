@@ -13,19 +13,21 @@ the game's settings for every installed BepInEx plugin.
 
 ## What you get
 
-**During gameplay**
+**During gameplay** – the panels only show up when they have something to say:
 
 - **Size bar:** her weight next to her height (`90m  8.92 kt`).
-- **Bottom right:** the nearest giantess – her weight, your size to her, her
-  height and how warm it feels to you, each as a comparison.
-- **Bottom left – how you feel:** air temperature (map, time of day, height),
-  your altitude and oxygen, her breath, the wind from her movement, the felt
-  temperature with her body warmth, and how your body copes (sweating, panting,
-  heatstroke, or getting cold).
-- **Fun-fact popup** now and then (top right by default).
+- **Bottom right, when you look at her:** her weight, your size to her, her
+  height and how warm it feels up there, each as a comparison. Changed
+  examples pop as she grows; the panel fades out when you look away.
+- **Bottom left, when something changes:** air temperature (map, time of day,
+  height), your altitude and oxygen, her breath, the wind from her movement,
+  the felt temperature with her body warmth, and how your body copes
+  (sweating, panting, heatstroke, or getting cold). Shrinking counts too.
+- **Popups (top right):** growth milestones ("SOLANA is now taller than the
+  Eiffel Tower!") and a fun fact now and then.
 
 **In the pause menu** – a tabbed panel, one page per topic, with a character
-selector (Akipo, Red, Blue):
+selector (Akipo, Solana, Selena). **+** opens a big two-column view:
 
 | Tab | About |
 | --- | --- |
@@ -50,6 +52,7 @@ explain each.
 
 All numbers are square–cube law estimates with rough reference values – fun,
 not science. The formulas are written from scratch for this plugin.
+Formulas and further reading: [docs/SCIENCE.md](docs/SCIENCE.md).
 
 Supports **LethalFantasy beta 1.0.3** (Akipo, Red twin, Blue twin).
 
@@ -93,9 +96,10 @@ Settings are in the MODS tab, or in `<LethalFantasy>\BepInEx\config\`:
 
 - `com.epicopy.realitycheck.cfg`
   - `[General] Units` – Metric, Imperial or Both
-  - `[HUD]` – weight on the size bar, corner panel, fun facts and their position/interval
+  - `[HUD]` – weight on the size bar, corner panel (`CornerPanelOnLook`), fun
+    facts and their position/interval
   - `[PausePanel] Show`
-  - `[Feel]` – the bottom-left panel; `BodyTimeScale` (how fast you heat up or
+  - `[Feel]` – the bottom-left panel; `OnlyOnChange`, `BodyTimeScale` (how fast you heat up or
     chill), `AirTemperatureOffset`, `BaseBreeze` (0 = still air)
   - `[Bodies]` – the natural height and weight of each character and of you
     (Akipo 1.62 m / 54 kg, Red 1.72 m / 66 kg, Blue 1.70 m / 64 kg – assumptions)
@@ -137,6 +141,7 @@ src/RealityCheck/HudPatch.cs    Weight on the size bar
 src/RealityCheck/Ui.cs          Panels, tooltips (HoverTip.cs), game hooks
 src/LFModMenu/                  MODS settings tab and the Plugins: line
 docs/MODMENU_INTEGRATION.md     How other mods show up in the MODS tab
+docs/SCIENCE.md                 Calculations, limits and sources
 ```
 
 ## Notes

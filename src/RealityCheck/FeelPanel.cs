@@ -34,6 +34,12 @@ namespace RealityCheck
         private const double ClothingFactor = 0.3;     // clothes cut the extra cold loss to ~30%
         private const double ChillLossW = 100;         // net loss above this (cold and/or wind) chills you
 
+        private const float ShowSeconds = 6f;   // how long a new state stays on screen
+        private static string lastState;
+        private static float stateChangedAt = -100, feelAlpha;
+        private static bool herEffect, danger;
+        private static CanvasGroup feelGroup;
+
         public static void Tick(GameUI ui)
         {
             if (owner != ui || root == null)
@@ -60,6 +66,13 @@ namespace RealityCheck
                         && PlayerDriver.LocalPlayer != null && !Ui.CraftingOpen();
             if (root.activeSelf != show) root.SetActive(show);
             if (!show) { Wind.Reset(); return; }   // no stale positions after a pause or menu
+
+            // Only when something happens: fade in fast, fade out after a few seconds of nothing new.
+            bool wanted = !Plugin.FeelOnChange.Value || herEffect || danger || Time.unscaledTime - stateChangedAt < ShowSeconds;
+            feelAlpha = Mathf.MoveTowards(feelAlpha, wanted ? 1 : 0, Time.unscaledDeltaTime / (wanted ? 0.25f : 1f));
+            if (feelGroup == null) feelGroup = root.GetComponent<CanvasGroup>() ?? root.AddComponent<CanvasGroup>();
+            feelGroup.alpha = feelAlpha;
+            feelGroup.blocksRaycasts = false;
             // Body-part speeds are sampled every frame (a swinging foot must not cancel out); the panel reads the peak.
             if (windG != null && Time.deltaTime > 0)
                 Wind.SampleFrame(windG, Ui.Eye() ?? PlayerDriver.LocalPlayer.transform.position, windMpu, windHeight, Time.deltaTime);
@@ -266,16 +279,20 @@ namespace RealityCheck
             feltSmooth = double.IsNaN(feltSmooth) ? feel : feltSmooth + (feel - feltSmooth) * Math.Min(1, dt / Plugin.BodyTimeScale.Value / FeelSeconds); // ~30 s real-time average
             feel = feltSmooth;
 
-            double sweatCap = (touching ? SweatEnclosedW : SweatMaxW) * (1 - 0.8 * Math.Max(0, humidity - Climate.DefaultHumidity) / (100 - Climate.DefaultHumidity));
-            double dry = exchange * SkinAreaM2 * (34 - feel);       // negative when the air is warmer than your skin
-            if (dry > BodyHeatW) dry = BodyHeatW + (dry - BodyHeatW) * ClothingFactor; // clothes hold heat in the cold
-            double needSweat = Math.Max(0, BodyHeatW - dry);
+            // Shrunk: you make less heat (k^2.25) but lose it over relatively more skin (k²), and your
+            // small body warms and chills much faster (heat capacity k³) – like a mouse.
+            double sc = Plugin.PlayerScale(), sc2 = sc * sc;
+            double bodyHeat = BodyHeatW * Math.Pow(sc, 2.25), skinArea = SkinAreaM2 * sc2;
+            double sweatCap = sc2 * (touching ? SweatEnclosedW : SweatMaxW) * (1 - 0.8 * Math.Max(0, humidity - Climate.DefaultHumidity) / (100 - Climate.DefaultHumidity));
+            double dry = exchange * skinArea * (34 - feel);       // negative when the air is warmer than your skin
+            if (dry > bodyHeat) dry = bodyHeat + (dry - bodyHeat) * ClothingFactor; // clothes hold heat in the cold
+            double needSweat = Math.Max(0, bodyHeat - dry);
             // Sweating builds up over ~2 min and fades over ~5 min (you stay damp for a while).
             double demand = sweatCap > 0 ? Math.Min(1, needSweat / sweatCap) : 1;
             double tau = demand > sweatLevel ? SweatOnsetSeconds : SweatFadeSeconds;
             sweatLevel += (demand - sweatLevel) * Math.Min(1, dt / tau);
-            double net = BodyHeatW - dry - sweatLevel * sweatCap;     // > 0: you heat up
-            double change = net * dt / (PlayerMassKg * HeatCapacity);
+            double net = bodyHeat - dry - sweatLevel * sweatCap;     // > 0: you heat up
+            double change = net * dt / (PlayerMassKg * sc2 * sc * HeatCapacity);
             if (net > 0)
             {
                 // Gaining heat: back up to 37 °C quickly when chilled, then heat up from there.
@@ -286,7 +303,7 @@ namespace RealityCheck
                 core += Math.Max(37.0 - core, change);
                 core += (37.0 - core) * Math.Min(1, dt / RecoverSeconds);
             }
-            else if (net < -ChillLossW)
+            else if (net < -ChillLossW * sc2)
             {
                 core = Math.Max(25, core + change);   // clearly losing more heat than you make (cold, wind): you chill
             }
@@ -317,6 +334,12 @@ namespace RealityCheck
                 feel < 26 ? $"<color={PausePanel.Good}>You feel comfortable</color>" :
                 $"<color={PausePanel.Warn}>You feel warm</color>";
 
+            // When to show the panel: the state changed, she is warming / breathing / blowing on you, or it is dangerous.
+            string stateKey = System.Text.RegularExpressions.Regex.Replace(state, "<[^>]+>", "");
+            if (stateKey != lastState) { lastState = stateKey; stateChangedAt = Time.unscaledTime; }
+            herEffect = act.name != null || touching || radiant >= SizeStats.FeltRadiantWm2 || mix > 0.05 || (windFrom != null && wind >= 0.5);
+            danger = core < 35 || core >= 39 || feel < -10;
+
             string source = act.name != null || touching ? " <color={0}>– GTS warmth</color>" :
                 soleRadiant > 0 && radiant - soleRadiant < SizeStats.FeltRadiantWm2 ? $" <color={{0}}>– her sole +{Fmt.Num(radiant / ExchangeW_m2K)} °</color>" : radiant >= SizeStats.FeltRadiantWm2 ? $" <color={{0}}>– GTS +{Fmt.Num(radiant / ExchangeW_m2K)} °</color>" : "";
             source = string.Format(source, PausePanel.Dim);
@@ -334,6 +357,8 @@ namespace RealityCheck
             string airLine = $"<color={PausePanel.Dim}>AIR</color> {Fmt.Temp(air, u)} <color={PausePanel.Dim}>{Fmt.Num(ambientHumidity)}% · {climate.where}</color>\n";
             if (climate.where.Contains("stomach"))
                 airLine += $"<color={PausePanel.Dim}>O2</color> <color={PausePanel.Bad}>very low – stomach gas, you get short of breath</color>\n";
+            if (sc < 0.95 || sc > 1.05)
+                airLine += $"<color={PausePanel.Dim}>YOU</color> {Fmt.Length(Plugin.YouHeight, u)} <color={PausePanel.Dim}>(×{Fmt.Num(sc)}){(sc < 0.95 ? " – you chill and warm faster" : "")}</color>\n";
             return airLine + height + breath + windLine + $"<color={PausePanel.Dim}>FEELS LIKE</color> <color={feelColor}>{Fmt.Temp(feel, u)}</color>{source}\n" +
                    $"<color={PausePanel.Dim}>BODY</color> <color={coreColor}>{Fmt.Temp1(core, u)}</color>  {state}";
         }

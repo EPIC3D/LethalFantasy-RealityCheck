@@ -14,16 +14,16 @@ namespace RealityCheck
     {
         public const string Guid = "com.epicopy.realitycheck";
         public const string Name = "LethalFantasy RealityCheck";
-        public const string Version = "0.1.0";
+        public const string Version = "0.2.0";
 
         internal static ManualLogSource Log;
 
         internal static ConfigEntry<bool> HudWeight;
         internal static ConfigEntry<WeightUnits> Units;
-        internal static ConfigEntry<bool> HudPanelEnabled, HudTips;
+        internal static ConfigEntry<bool> HudPanelEnabled, HudTips, HudOnLook;
         internal static ConfigEntry<float> TickerInterval;
         internal static ConfigEntry<TipPosition> TipPosition;
-        internal static ConfigEntry<bool> FeelEnabled;
+        internal static ConfigEntry<bool> FeelEnabled, FeelOnChange;
         internal static ConfigEntry<float> AmbientOffsetC, BodyTimeScale, BaseWind;
         internal static ConfigEntry<bool> PanelEnabled;
         internal static ConfigEntry<float> AkipoHeight, AkipoMass, RedHeight, RedMass, BlueHeight, BlueMass;
@@ -36,8 +36,10 @@ namespace RealityCheck
             HudWeight = Config.Bind("HUD", "ShowWeight", true, "Show the giantess' weight next to her height on the size bar.");
             Units = Config.Bind("General", "Units", WeightUnits.Metric, "Units everywhere: Metric (m, kg), Imperial (ft, lb) or Both.");
             HudPanelEnabled = Config.Bind("HUD", "ShowCornerPanel", true, "Small comparison panel in the bottom-right corner during gameplay.");
+            HudOnLook = Config.Bind("HUD", "CornerPanelOnLook", true, "Show the corner panel only while you look at a giantess (and a moment after).");
             HudTips = Config.Bind("HUD", "ShowTips", true, "A fun-fact popup now and then.");
             FeelEnabled = Config.Bind("Feel", "Show", true, "Bottom-left: how warm it feels to you and how your body copes.");
+            FeelOnChange = Config.Bind("Feel", "OnlyOnChange", true, "Show the bottom-left panel only when your state changes, while a giantess warms or blows on you, or when it is dangerous.");
             BodyTimeScale = Range("Feel", "BodyTimeScale", 5f, 1f, 100f,
                 "How fast your body heats up and chills compared to real time (the game day is ~80× faster).");
             BaseWind = Range("Feel", "BaseBreeze", 0f, 0f, 15f, "Everyday breeze in m/s (stronger higher up and in rain). 0 = still air.");
@@ -77,6 +79,22 @@ namespace RealityCheck
 
         internal static float BustOf(string name) =>
             name == "Solana" ? RedBust.Value : name == "Selena" ? BlueBust.Value : AkipoBust.Value;
+
+        /// <summary>
+        /// Your size factor: 1 normally, below 1 when shrunk (shrink house, enchantments, mods).
+        /// The game scales the player's transform (PlayerDriver.UpdatePlayerScale), so read that.
+        /// </summary>
+        internal static double PlayerScale()
+        {
+            var p = PlayerDriver.LocalPlayer;
+            if ((object)p == null || p == null) return 1;
+            float sc = p.transform.localScale.y;
+            return float.IsNaN(sc) || sc <= 0 ? 1 : System.Math.Max(0.001, System.Math.Min(100, sc));
+        }
+
+        /// <summary>Your current height (m) and weight (kg), shrinking included.</summary>
+        internal static double YouHeight => PlayerHeight.Value * PlayerScale();
+        internal static double YouMass { get { double sc = PlayerScale(); return PlayerMass.Value * sc * sc * sc; } }
 
         /// <summary>Height in metres as the game shows it; the lobby has no LootZoneManager, so use its default 30 m per scale unit.</summary>
         internal static float HeightOf(Giantess g)

@@ -20,9 +20,40 @@ namespace RealityCheck
             return found;
         }
 
+        // A white rounded-rectangle sprite, 9-sliced, so dark boxes get soft corners like the game's dialogue box.
+        private static Sprite rounded;
+        public static void Round(Image img, float radius = 18)
+        {
+            if (img == null) return;
+            if (rounded == null)
+            {
+                const int size = 64, r = 18;
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+                var px = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                    {
+                        // Distance outside the rounded corner; 1-pixel soft edge.
+                        float cx = Mathf.Clamp(x + 0.5f, r, size - r), cy = Mathf.Clamp(y + 0.5f, r, size - r);
+                        float d = Mathf.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy));
+                        byte a = (byte)(255 * Mathf.Clamp01(r - d + 0.5f));
+                        px[y * size + x] = new Color32(255, 255, 255, a);
+                    }
+                tex.SetPixels32(px);
+                tex.Apply();
+                rounded = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100, 0,
+                    SpriteMeshType.FullRect, new Vector4(r, r, r, r));
+                rounded.name = "RealityCheck_Rounded";
+                tex.hideFlags = rounded.hideFlags = HideFlags.DontUnloadUnusedAsset;   // survives scene changes
+            }
+            img.sprite = rounded;
+            img.type = Image.Type.Sliced;
+            img.pixelsPerUnitMultiplier = 18f / radius;   // smaller radius: the same sprite, scaled corners
+        }
+
         /// <summary>Dark box with a rich-text TMP label, in the game's font, on the given canvas.</summary>
         public static (GameObject root, TextMeshProUGUI text) CreatePanel(Canvas canvas, TMP_Text fontSource,
-            Vector2 anchorMin, Vector2 anchorMax, string name, float maxFont, bool background = true)
+            Vector2 anchorMin, Vector2 anchorMax, string name, float maxFont, bool background = true, bool rounded = true)
         {
             if (canvas == null) throw new Exception("canvas not found for " + name);
             var root = new GameObject(name, typeof(RectTransform), typeof(Image));
@@ -33,6 +64,7 @@ namespace RealityCheck
             rt.anchorMax = anchorMax;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
             var bg = root.GetComponent<Image>();
+            if (rounded) Round(bg);
             bg.color = background ? new Color(0f, 0.035f, 0.07f, 0.97f) : Color.clear; // the main menu panel navy
             bg.raycastTarget = false;
             if (background)
@@ -173,6 +205,7 @@ namespace RealityCheck
         public static (GameObject band, RectTransform textRt, TextMeshProUGUI text) CreateTicker(Canvas canvas, TMP_Text fontSource)
         {
             var band = new GameObject("RealityCheck_Ticker", typeof(RectTransform), typeof(Image), typeof(RectMask2D));
+            Round(band.GetComponent<Image>());
             var rt = (RectTransform)band.transform;
             rt.SetParent(canvas.transform, false);
             rt.SetAsLastSibling();

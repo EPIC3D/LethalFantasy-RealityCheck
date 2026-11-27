@@ -168,7 +168,7 @@ namespace RealityCheck
                         $"{Fmt.Length(above, u)} <color={Dim}>~{Fmt.LikeLength(above)}</color>");
                 }
             }
-            double ph = Plugin.PlayerHeight.Value;
+            double ph = Plugin.YouHeight;
             switch (kind)
             {
                 case Kind.Rain:

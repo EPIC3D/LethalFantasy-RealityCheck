@@ -40,7 +40,7 @@ namespace RealityCheck
             {
                 owner = pm;
                 (root, text) = Ui.CreatePanel(Ui.FindCanvas(pm.parentGameObject.transform), pm.debugTextMesh,
-                    new Vector2(0.03f, 0.17f), new Vector2(0.29f, 0.83f), "RealityCheck_PausePanel", 26);
+                    new Vector2(0.03f, 0.17f), new Vector2(0.29f, 0.83f), "RealityCheck_PausePanel", 26, rounded: false);   // square, like the pause menu box
                 BuildTabButtons(pm.debugTextMesh);
                 text.enableWordWrapping = false;               // lines never wrap into the label column
                 text.enableAutoSizing = true;                  // big on short pages, a bit smaller on long ones
@@ -49,6 +49,19 @@ namespace RealityCheck
                 text.overflowMode = TextOverflowModes.Overflow;   // Ellipsis would cut ALL text after the first long line
                 if (root.GetComponent<RectMask2D>() == null) root.AddComponent<RectMask2D>(); // the panel frame clips anything that sticks out
                 HoverTip.Attach(text, Ui.FindCanvas(pm.parentGameObject.transform));
+                // Right column, used only in the expanded view.
+                var go2 = UnityEngine.Object.Instantiate(text.gameObject, text.transform.parent);
+                go2.name = "Text2";
+                var oldTip = go2.GetComponent<HoverTip>();
+                if (oldTip != null) UnityEngine.Object.Destroy(oldTip);
+                text2 = go2.GetComponent<TextMeshProUGUI>();
+                var r2 = text2.rectTransform;
+                r2.anchorMin = new Vector2(0.5f, text.rectTransform.anchorMin.y);
+                r2.anchorMax = text.rectTransform.anchorMax;
+                r2.offsetMin = new Vector2(16, text.rectTransform.offsetMin.y);
+                r2.offsetMax = text.rectTransform.offsetMax;
+                HoverTip.Attach(text2, Ui.FindCanvas(pm.parentGameObject.transform));
+                go2.SetActive(false);
                 Plugin.Log.LogDebug("Pause panel attached");
             }
 
@@ -56,6 +69,7 @@ namespace RealityCheck
             bool show = Plugin.PanelEnabled.Value && pm.parentGameObject.activeInHierarchy && !subMenu && Giantesses().Any();
             // Everything is computed once when the menu opens; buttons recompute on click.
             bool opening = show && !root.activeSelf;
+            if (!show && expanded) SetExpanded(false);
             if (root.activeSelf != show) root.SetActive(show);
             if (opening)
             {
@@ -72,12 +86,39 @@ namespace RealityCheck
         // Akipo pink (like the UNSTUCK button), Solana red (QUIT), Selena blue.
         private static readonly Color[] CharColors =
         {
-            new Color(0.95f, 0.45f, 0.82f), new Color(0.85f, 0.08f, 0.08f), new Color(0.1f, 0.45f, 0.95f),
+            new Color(0.95f, 0.45f, 0.82f), new Color(0.76f, 0f, 0f), new Color(0.1f, 0.45f, 0.95f),
         };
         private static readonly List<(GameObject go, Image img)> charButtons = new List<(GameObject, Image)>();
         internal static string Selected;
         private const int TabsPerRow = 6;
+
+        // Quick view (left side) and expanded view (almost full screen, like the game's other menus).
+        private static bool expanded;
+        private static TextMeshProUGUI text2;
+        private static TextMeshProUGUI zoomLabel;
+        private static readonly Vector2 QuickMin = new Vector2(0.03f, 0.17f), QuickMax = new Vector2(0.29f, 0.83f);
+        private static readonly Vector2 WideMin = new Vector2(0.04f, 0.05f), WideMax = new Vector2(0.96f, 0.95f);
+
+        private static void SetExpanded(bool on)
+        {
+            expanded = on;
+            if (root == null) return;
+            var rt = (RectTransform)root.transform;
+            rt.anchorMin = on ? WideMin : QuickMin;
+            rt.anchorMax = on ? WideMax : QuickMax;
+            rt.SetAsLastSibling();
+            var bg = root.GetComponent<Image>();
+            if (bg != null) bg.raycastTarget = on;          // expanded: block clicks to the pause menu behind
+            var trt = text.rectTransform;
+            trt.anchorMax = new Vector2(on ? 0.5f : 1f, trt.anchorMax.y);
+            if (text2 != null) text2.gameObject.SetActive(on);
+            text.fontSizeMax = on ? 34 : 24;
+            text.fontSizeMin = on ? 20 : 16;
+            if (zoomLabel != null) zoomLabel.text = on ? "–" : "+";
+            Refresh();
+        }
         private const float CharArea = 0.07f; // top row: character picker
+        private const float ZoomStart = 0.86f; // the zoom button takes the right end of the top row
         private static float TabArea => 0.065f * ((Tabs.Length + TabsPerRow - 1) / TabsPerRow); // rows of page tabs
 
         private static RectTransform Area(string name, float top, float bottom)
@@ -103,9 +144,7 @@ namespace RealityCheck
             rt.offsetMax = new Vector2(-4, -4);
             var img = go.GetComponent<Image>();
             img.color = TabIdle;
-            var frame = go.AddComponent<Outline>();
-            frame.effectColor = new Color(0.78f, 0.8f, 0.82f, 1f);
-            frame.effectDistance = new Vector2(2f, -2f);
+            Ui.Round(img, 6);   // softly rounded, no frame – like the pause menu buttons
             go.GetComponent<Button>().onClick.AddListener(onClick);
 
             var lrt = new GameObject("Label", typeof(RectTransform)).GetComponent<RectTransform>();
@@ -139,9 +178,12 @@ namespace RealityCheck
             {
                 string who = Characters[i];
                 charButtons.Add(MakeButton(chars, who.ToUpperInvariant(), fontSource,
-                    (float)i / Characters.Length, (float)(i + 1) / Characters.Length, 0, 1,
+                    ZoomStart * i / Characters.Length, ZoomStart * (i + 1) / Characters.Length, 0, 1,
                     () => { Selected = who; Refresh(); }));
             }
+            // "+": open the big view; "–": back to the quick view.
+            var zoom = MakeButton(chars, "+", fontSource, ZoomStart, 1, 0, 1, () => SetExpanded(!expanded));
+            zoomLabel = zoom.go.GetComponentInChildren<TextMeshProUGUI>();
 
             var tabs = Area("Tabs", CharArea, CharArea + TabArea);
             int rows = (Tabs.Length + TabsPerRow - 1) / TabsPerRow;
@@ -181,7 +223,36 @@ namespace RealityCheck
             for (int i = 0; i < tabImages.Count; i++)
                 if (tabImages[i] != null) tabImages[i].color = i == Page ? TabActive : TabIdle;
             nextRefresh = Time.unscaledTime + 0.25f;
-            if (text != null) text.text = BuildText();
+            if (text == null) return;
+            string all = BuildText();
+            if (!expanded || text2 == null) { text.enableAutoSizing = true; text.text = all; DrawBands(text); if (text2 != null) DrawBands(text2); return; }
+
+            // Two columns: split between sections (blank lines) near the middle.
+            var blocks = all.Replace("\r", "").Split(new[] { "\n\n" }, StringSplitOptions.None);
+            // Cut only before a section title, where the taller column is shortest.
+            int Lines(int from, int to) { int n = 0; for (int i = from; i < to; i++) n += blocks[i].Split('\n').Length + 1; return n; }
+            int cut = blocks.Length, best = int.MaxValue;
+            for (int i = 1; i < blocks.Length; i++)
+            {
+                if (!blocks[i].TrimStart('\n').StartsWith($"<color={Head}><b>")) continue;
+                int tallest = Math.Max(Lines(0, i), Lines(i, blocks.Length) + 2);
+                if (tallest < best) { best = tallest; cut = i; }
+            }
+            if (cut < blocks.Length && best >= Lines(0, blocks.Length)) cut = blocks.Length;   // no gain: one column
+            string left = string.Join("\n\n", blocks, 0, cut);
+            string right = cut < blocks.Length ? string.Join("\n\n", blocks, cut, blocks.Length - cut) : "";
+            text2.fontSizeMax = text.fontSizeMax;
+            text2.fontSizeMin = text.fontSizeMin;
+            text.enableAutoSizing = text2.enableAutoSizing = true;
+            text.text = left;
+            text2.text = "\n\n" + right;   // two lines lower: her name and a gap open the left column
+            text.ForceMeshUpdate();
+            text2.ForceMeshUpdate();
+            float size = Mathf.Min(text.fontSize, text2.fontSize);   // the same font size in both columns
+            text.enableAutoSizing = text2.enableAutoSizing = false;
+            text.fontSize = text2.fontSize = size;
+            DrawBands(text);
+            DrawBands(text2);
         }
 
         internal static IEnumerable<Giantess> Giantesses()
@@ -204,6 +275,7 @@ namespace RealityCheck
             var u = Plugin.Units.Value;
             var sb = new StringBuilder();
             HoverTip.Hints.Clear();
+            striped.Clear();
             lastHint = -1;
 
             // Only the selected character is shown; fall back to the largest one present.
@@ -230,11 +302,83 @@ namespace RealityCheck
             return Finish(sb.ToString());
         }
 
-        internal static void Section(StringBuilder sb, string title) =>
+        internal static void Section(StringBuilder sb, string title)
+        {
+            stripe = 0;
             sb.Append($"<color={Head}><b>{title}</b></color>\n");
+        }
+
+        // Every second entry gets a faint full-width band, so the eye stays on the row.
+        private static int stripe;
+        private static readonly HashSet<string> striped = new HashSet<string>();
+        private static readonly System.Text.RegularExpressions.Regex LinkId =
+            new System.Text.RegularExpressions.Regex("^<link=\"(\\d+)\">");
+
+        /// <summary>Remembers every second entry (by its link id); a band is drawn behind it after layout.</summary>
+        private static string Stripe(string entry)
+        {
+            var m = LinkId.Match(entry);
+            if (stripe++ % 2 == 1 && m.Success) striped.Add(m.Groups[1].Value);
+            return entry;
+        }
+
+        private static readonly Dictionary<TextMeshProUGUI, (RectTransform layer, List<Image> bands)> bandLayers =
+            new Dictionary<TextMeshProUGUI, (RectTransform, List<Image>)>();
+
+        /// <summary>Faint full-width bands behind the striped entries of a laid-out text.</summary>
+        private static void DrawBands(TextMeshProUGUI t)
+        {
+            if (t == null) return;
+            if (!bandLayers.TryGetValue(t, out var L) || L.layer == null)
+            {
+                var go = new GameObject("Bands", typeof(RectTransform));
+                L = ((RectTransform)go.transform, new List<Image>());
+                L.layer.SetParent(t.transform.parent, false);
+                bandLayers[t] = L;
+            }
+            var tr = t.rectTransform;
+            L.layer.SetSiblingIndex(tr.GetSiblingIndex());   // just behind the text
+            L.layer.anchorMin = tr.anchorMin; L.layer.anchorMax = tr.anchorMax;
+            L.layer.offsetMin = tr.offsetMin; L.layer.offsetMax = tr.offsetMax;
+            L.layer.pivot = tr.pivot;
+            bool visible = t.gameObject.activeInHierarchy;
+            L.layer.gameObject.SetActive(visible);
+            if (!visible) return;   // a hidden text (the right column in the quick view) has no layout
+
+            t.ForceMeshUpdate();
+            var info = t.textInfo;
+            if (info == null || info.characterInfo == null || info.lineInfo == null) return;
+            Rect r = tr.rect;
+            int used = 0;
+            for (int i = 0; i < info.linkCount; i++)
+            {
+                var link = info.linkInfo[i];
+                if (!striped.Contains(link.GetLinkID()) || link.linkTextLength <= 0) continue;
+                int first = link.linkTextfirstCharacterIndex, last = first + link.linkTextLength - 1;
+                if (last >= info.characterCount) continue;
+                var l0 = info.lineInfo[info.characterInfo[first].lineNumber];
+                var l1 = info.lineInfo[info.characterInfo[last].lineNumber];
+                if (used == L.bands.Count)
+                {
+                    var b = new GameObject("Band", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                    b.rectTransform.SetParent(L.layer, false);
+                    b.rectTransform.anchorMin = b.rectTransform.anchorMax = L.layer.pivot;   // local origin
+                    b.rectTransform.pivot = new Vector2(0, 1);
+                    b.color = new Color(1f, 1f, 1f, 0.06f);
+                    b.raycastTarget = false;
+                    L.bands.Add(b);
+                }
+                var band = L.bands[used++];
+                band.gameObject.SetActive(true);
+                float top = l0.ascender + 2, bottom = l1.descender - 2;
+                band.rectTransform.anchoredPosition = new Vector2(r.xMin - 6, top);
+                band.rectTransform.sizeDelta = new Vector2(r.width + 12, top - bottom);
+            }
+            for (int i = used; i < L.bands.Count; i++) L.bands[i].gameObject.SetActive(false);
+        }
 
         // Two columns: label on the left, value from a fixed position.
-        private const string ValueColumn = "<pos=41%>";
+        private const string ValueColumn = "<pos=10em>";   // em: columns follow the font size, not the panel width
 
         private static readonly System.Text.RegularExpressions.Regex ExPart =
             new System.Text.RegularExpressions.Regex("<ex>(.*?)</ex>", System.Text.RegularExpressions.RegexOptions.Singleline);
@@ -282,7 +426,7 @@ namespace RealityCheck
             int id = HoverTip.Hints.Count;
             HoverTip.Hints.Add(tooltip);
             lastHint = id;
-            sb.Append($"<link=\"{id}\"><color={Dim}>{label}</color>{ValueColumn}{main}§{id}§</link>\n");
+            sb.Append(Stripe($"<link=\"{id}\"><color={Dim}>{label}</color>{ValueColumn}{main}§{id}§</link>") + "\n");
         }
 
         private static int lastHint = -1;
@@ -327,7 +471,7 @@ namespace RealityCheck
 
         private static void SizePage(StringBuilder sb, string name, SizeStats s, WeightUnits u, bool showName)
         {
-            double ph = Plugin.PlayerHeight.Value, pm = Plugin.PlayerMass.Value;
+            double ph = Plugin.YouHeight, pm = Plugin.YouMass;
             Section(sb, showName ? name.ToUpperInvariant() : "GIANTESS → NORMAL");
             Line(sb, "Weight", $"{Fmt.Mass(s.Mass, u)} · {Fmt.Num(s.Mass / pm)}× you <color={Dim}>~{Fmt.LikeMass(s.Mass)}</color>");
             Line(sb, "Foot", $"{Fmt.Length(s.FootLength, u)} × {Fmt.Length(s.FootWidth, u)} <color={Dim}>~{Fmt.LikeLength(s.FootLength)}</color> <color={Dim}>{Fmt.Num(s.FootLength / ph)}× your height</color>");
@@ -371,21 +515,23 @@ namespace RealityCheck
 
         private static void YouPage(StringBuilder sb, string name, SizeStats s, WeightUnits u)
         {
-            double ph = Plugin.PlayerHeight.Value, pm = Plugin.PlayerMass.Value;
+            double ph = Plugin.YouHeight, pm = Plugin.YouMass;
             double h = ph / s.K, m = pm / (s.K * s.K * s.K);
             Section(sb, $"NORMAL → GIANTESS ({name})");
             Line(sb, "You to her", $"{Fmt.Length(h, u)} <color={Dim}>~{Fmt.LikeLength(h)}</color>");
             Line(sb, "Your weight", $"{Fmt.Mass(m, u)} <color={Dim}>~{Fmt.LikeMass(m)}</color>");
             Line(sb, "Her finger", $"{Fmt.Length(s.FingerWidth, u)} <color={Dim}>~{Fmt.LikeLength(s.FingerWidth)}</color>");
             Line(sb, "Fits under sole", $"{Fmt.Round(s.SoleArea / (0.45 * 0.3))} people");
-            // Spotting you: a person needs ~3 arcmin to notice something. Real: her k× bigger eye sees ~k× sharper.
+            // Spotting you: a person notices something ~3 arcmin big. Her eye is k× bigger with cells like ours,
+            // so it sees up to k× sharper – but air shimmer blurs everything below ~1 arcsec (so ~0.05 arcmin to notice).
             double? eyeD = SoundPage.EyeDistance(name);
             if (eyeD.HasValue)
             {
-                double arcmin = Plugin.PlayerHeight.Value / eyeD.Value * 3437.75;
-                string Seen(bool yes) => yes ? $"<color={Good}>yes</color>" : $"<color={Bad}>no</color>";
-                Line(sb, "Can she spot you?", $"you look {Fmt.Num(arcmin)} arcmin from {Fmt.Length(eyeD.Value, u)} " +
-                    Ex($"{Seen(arcmin * s.K >= 3)} (R) / {Seen(arcmin >= 3)} (F)"));
+                double arcmin = Plugin.YouHeight / eyeD.Value * 3437.75;
+                double need = Math.Max(3 / s.K, 0.05);
+                bool seen = arcmin >= need;
+                Line(sb, "Can she spot you?", (seen ? $"<color={Good}>yes</color>" : $"<color={Bad}>barely / no</color>") +
+                    $" <color={Dim}>you look {Fmt.Num(arcmin)} arcmin from {Fmt.Length(eyeD.Value, u)}; she needs {Fmt.Num(need)} arcmin – her bigger eye sees {Fmt.Num(Math.Min(s.K, 60))}× sharper than ours, until air shimmer limits it</color>");
             }
             Line(sb, "Her blow", RF(Fmt.Speed(s.BlowWindReal, u), Fmt.Wind(s.BlowWindReal), Fmt.Speed(s.BlowWindFantasy, u), Fmt.Wind(s.BlowWindFantasy)));
             Note(sb, $"from arm's length – fantasy feels like {Fmt.Wind(s.BlowWindFantasy)}, real like {Fmt.Wind(s.BlowWindReal)}");
@@ -457,12 +603,12 @@ namespace RealityCheck
             int id = HoverTip.Hints.Count;
             HoverTip.Hints.Add(exact);
             lastHint = id;
-            sb.Append($"<link=\"{id}\"><color={Dim}>{label}</color><pos=38%>{a}<pos=69%>{b}§{id}§</link>\n");
+            sb.Append(Stripe($"<link=\"{id}\"><color={Dim}>{label}</color><pos=10em>{a}<pos=18em>{b}§{id}§</link>") + "\n");
         }
 
         /// <summary>Three columns: label and two values.</summary>
         internal static void Row(StringBuilder sb, string label, string a, string b) =>
-            sb.Append($"<color={Dim}>{label}</color><pos=38%>{a}<pos=69%>{b}\n");
+            sb.Append($"<color={Dim}>{label}</color><pos=10em>{a}<pos=18em>{b}\n");
 
         private static void AirPage(StringBuilder sb, SizeStats s, WeightUnits u)
         {
@@ -505,7 +651,7 @@ namespace RealityCheck
             double holdsKg = 0.1 * k * k;
             Line(sb, "One hair", $"{HairLike(hairD)} <color={Dim}>{Fmt.Length(hairD, u)} thick, {Fmt.Length(hairL, u)} long, {Fmt.Mass(hairKg, u)}</color>");
             Line(sb, "It holds", $"{Fmt.Mass(holdsKg, u)} " + Ex(Fmt.LikeMass(holdsKg)) +
-                (holdsKg >= Plugin.PlayerMass.Value ? Ex("climbable", Good) : Ex("snaps under you", Warn)));
+                (holdsKg >= Plugin.YouMass ? Ex("climbable", Good) : Ex("snaps under you", Warn)));
         }
 
         private static void TouchPage(StringBuilder sb, SizeStats s, WeightUnits u)
@@ -523,7 +669,7 @@ namespace RealityCheck
             sb.AppendLine();
 
             Section(sb, "TOUCH & HUG");
-            double ph = Plugin.PlayerHeight.Value;
+            double ph = Plugin.YouHeight;
             Line(sb, "Her palm", $"covers {Fmt.Num(100 * s.PalmCoverage(ph))}% of you <color={Dim}>{Fmt.Area(s.PalmArea, u)}</color>");
             Line(sb, "Her skin", RF(Fmt.Temp(skinR, u), SkinWord(skinR), Fmt.Temp(skinF, u), SkinWord(skinF)));
             Line(sb, "Her hand", RF("", HandWord(skinR), "", HandWord(skinF)));
@@ -754,7 +900,7 @@ namespace RealityCheck
             var fan = s.ThrowPlayer(s.ThrowSpeedFantasy);
             Line(sb, "Release speed", RF(Fmt.Speed(s.ThrowSpeedReal, u), Fmt.LikeSpeed(s.ThrowSpeedReal), Fmt.Speed(s.ThrowSpeedFantasy, u), Fmt.LikeSpeed(s.ThrowSpeedFantasy)));
             Line(sb, "You'd fly", RF(SizeStats.DragResult((real.range, real.impact), u), DragLike((real.range, real.impact)), SizeStats.DragResult((fan.range, fan.impact), u), DragLike((fan.range, fan.impact))));
-            Note(sb, $"to her that's {Fmt.Length(real.range / s.K, u)} – like tossing {Fmt.LikeMass(Plugin.PlayerMass.Value / (s.K * s.K * s.K))}");
+            Note(sb, $"to her that's {Fmt.Length(real.range / s.K, u)} – like tossing {Fmt.LikeMass(Plugin.YouMass / (s.K * s.K * s.K))}");
             Line(sb, "G-force", $"{GText(s.ThrowG(s.ThrowSpeedReal))} (R)  /  {GText(s.ThrowG(s.ThrowSpeedFantasy))} (F)");
             if (!double.IsInfinity(fan.range))
                 Line(sb, "Landing speed", RF(Fmt.Speed(real.impact, u), Fmt.LikeSpeed(real.impact), Fmt.Speed(fan.impact, u), Fmt.LikeSpeed(fan.impact)));
@@ -813,7 +959,7 @@ namespace RealityCheck
 
         internal static double PressureRatio(SizeStats s)
         {
-            double ph = Plugin.PlayerHeight.Value, pm = Plugin.PlayerMass.Value;
+            double ph = Plugin.YouHeight, pm = Plugin.YouMass;
             return s.GroundPressurePa / SizeStats.Compute(ph, pm, ph).GroundPressurePa;
         }
 
@@ -848,6 +994,15 @@ namespace RealityCheck
                 (s.VoiceHz < 20 ? $"<color={Bad}>infrasound</color> <color={Dim}>{Fmt.Num(s.VoiceHz)} Hz</color>" : $"{Fmt.Num(s.VoiceHz)} Hz"));
             Line(sb, "Step tremor", $"M {s.StepMagnitude:0.0}, felt {Fmt.Length(s.StepFeltDistance, u)} " + Ex(Fmt.QuakeWord(s.StepMagnitude)));
             Line(sb, "Real motion", $"{Fmt.Num(s.SlowMotion)}× slower");
+            sb.AppendLine();
+            // Bones, ground and heat all give out near ×6–7 of her natural height.
+            double maxH = MaxWorkingHeight(s.BaseHeight);
+            Line(sb, "Largest possible", $"~{Fmt.Length(maxH, u)} " + Ex("limping, at the edge") +
+                $" <color={Dim}>bones, ground and heat all fail just above; not sustainable for long in this body shape</color>");
         }
+
+        /// <summary>The largest height a human-shaped body could just about work at (~90% of the bone limit).</summary>
+        internal static double MaxWorkingHeight(double baseHeight) =>
+            0.9 * baseHeight * SizeStats.BoneStrengthMPa / SizeStats.WalkingBoneStressMPa;
     }
 }

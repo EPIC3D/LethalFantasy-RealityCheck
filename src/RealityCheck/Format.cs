@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace RealityCheck
@@ -30,11 +31,11 @@ namespace RealityCheck
         public static string Mass(double kg, WeightUnits u)
         {
             double t = kg / 1000;
-            string metric = kg < 1 ? Num(kg * 1000) + " g" : kg < 1000 ? Num(kg) + " kg" :
+            string metric = kg < 1e-6 ? Num(kg * 1e9) + " µg" : kg < 1e-3 ? Num(kg * 1e6) + " mg" : kg < 1 ? Num(kg * 1000) + " g" : kg < 1000 ? Num(kg) + " kg" :
                 t < 1e3 ? Num(t) + " t" : t < 1e6 ? Num(t / 1e3) + " kt" : t < 1e9 ? Num(t / 1e6) + " Mt" :
                 t < 1e12 ? Num(t / 1e9) + " Gt" : Num(t / 1e12) + " Tt";
             double lb = kg / 0.45359237;
-            string imperial = lb < 1 ? Num(lb * 16) + " oz" : Num(lb) + " lb";
+            string imperial = lb < 1e-3 ? metric : lb < 1 ? Num(lb * 16) + " oz" : Num(lb) + " lb";
             return Both(metric, imperial, u);
         }
 
@@ -95,7 +96,7 @@ namespace RealityCheck
         {
             WeightUnits.Metric => metric,
             WeightUnits.Imperial => imperial,
-            _ => metric + " / " + imperial,
+            _ => metric == imperial ? metric : metric + " / " + imperial,
         };
 
         // --- "about the size of …" ------------------------------------------------------
@@ -539,6 +540,19 @@ namespace RealityCheck
         }
 
         public static string LikeLength(double m) => Nearest(Lengths, m);
+
+        // Ladders for growth milestones ("now taller than …").
+        internal static IReadOnlyList<(double m, string en)> HeightLadder => Heights;
+        internal static IReadOnlyList<(double kg, string en)> MassLadder => Masses;
+
+        /// <summary>An example as a noun phrase: "a townhouse", "the Eiffel Tower", "Mount Fuji".</summary>
+        internal static string WithArticle(string en)
+        {
+            if (en.StartsWith("a ") || en.StartsWith("an ") || en.StartsWith("the ")) return en;
+            if (char.IsUpper(en[0]))
+                return en.StartsWith("Mount") || en.StartsWith("Mont") || en == "Big Ben" || en == "Denali" ? en : "the " + en;
+            return ("aeiou".IndexOf(en[0]) >= 0 ? "an " : "a ") + en;
+        }
         public static string LikeMass(double kg) => Nearest(Masses, kg);
 
         /// <summary>

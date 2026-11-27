@@ -30,6 +30,7 @@ namespace RealityCheck
             tip.box.SetParent(canvas.transform, false);
             tip.box.pivot = new Vector2(0, 1);
             var img = go.GetComponent<Image>();
+            Ui.Round(img);
             img.color = new Color(0f, 0.035f, 0.07f, 0.97f);
             img.raycastTarget = false;
             var outline = go.AddComponent<Outline>();
@@ -75,7 +76,14 @@ namespace RealityCheck
                 box.sizeDelta = new Vector2(Mathf.Min(size.x, 520) + 20, size.y + 12);
             }
             RectTransformUtility.ScreenPointToLocalPointInRectangle((RectTransform)canvas.transform, mouse, cam, out var local);
-            box.localPosition = local + new Vector2(18, -18);
+            // Keep the box on screen: flip it to the left of / above the cursor near the right / bottom edge.
+            var area = ((RectTransform)canvas.transform).rect;
+            Vector2 pos = local + new Vector2(18, -18), boxSize = box.sizeDelta;
+            if (pos.x + boxSize.x > area.xMax - 8) pos.x = local.x - 18 - boxSize.x;
+            if (pos.y - boxSize.y < area.yMin + 8) pos.y = local.y + 18 + boxSize.y;
+            pos.x = Mathf.Max(area.xMin + 8, pos.x);
+            pos.y = Mathf.Min(area.yMax - 8, pos.y);
+            box.localPosition = pos;
             box.SetAsLastSibling();
             if (!box.gameObject.activeSelf) box.gameObject.SetActive(true);
         }

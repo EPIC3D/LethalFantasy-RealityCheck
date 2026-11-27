@@ -108,7 +108,7 @@ namespace RealityCheck
         /// <summary>Range, landing speed and flight time when she throws you at speed v0.</summary>
         public (double range, double impact, double time) ThrowPlayer(double v0)
         {
-            double m = Plugin.PlayerMass.Value, kdBase = 0.5 * PlayerCd * PlayerArea / m;
+            double sc = Plugin.PlayerScale(), m = Plugin.YouMass, kdBase = 0.5 * PlayerCd * PlayerArea * sc * sc / m;
             double release = ReleaseHeight;
             (double range, double impact, double time) best = (0, 0, 0);
             for (double deg = 10; deg <= 45; deg += 2.5)
